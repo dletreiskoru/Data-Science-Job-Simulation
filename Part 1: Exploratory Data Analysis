@@ -1,0 +1,34 @@
+import pandas as pd
+import warnings
+
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+def load_and_explore_data(client_data_path, price_data_path):
+    """Loads raw CSV data, formats dates, and prints basic exploratory statistics."""
+    print("--- Loading Datasets ---")
+    client_df = pd.read_csv(client_data(1).csv)
+    price_df = pd.read_csv(price_data((1).csv)
+
+    # Convert date columns to datetime objects
+    date_cols = ["date_activ", "date_end", "date_modif_prod", "date_renewal"]
+    for col in date_cols:
+        client_df[col] = pd.to_datetime(client_df[col], format='%Y-%m-%d')
+        
+    price_df["price_date"] = pd.to_datetime(price_df["price_date"], format='%Y-%m-%d')
+
+    print("\n--- Client Data Shape ---")
+    print(client_df.shape)
+    
+    print("\n--- Price Data Shape ---")
+    print(price_df.shape)
+
+    # Output missing values summary
+    print("\n--- Missing Values (% in Client Data) ---")
+    missing_percentages = client_df.isnull().sum() * 100 / len(client_df)
+    print(missing_percentages[missing_percentages > 0])
+
+    return client_df, price_df
+
+if __name__ == "__main__":
+    client_df, price_df = load_and_explore_data('client_data.csv', 'price_data.csv')
+    print("\nEDA complete. Ready for feature engineering.")
