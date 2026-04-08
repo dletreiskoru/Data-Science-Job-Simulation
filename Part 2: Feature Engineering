@@ -1,0 +1,71 @@
+import pandas as pd
+import numpy as np
+import warnings
+
+warnings.filterwarnings("ignore")
+
+def engineer_features(client_df, price_df):
+    """Applies transformations and engineers new features for the predictive model."""
+    print("--- Starting Feature Engineering ---")
+
+    # 1. Calculate Price Differences (December vs Preceding January)
+    monthly_price = price_df.groupby(['id', 'price_date']).agg({
+        'price_off_peak_var': 'mean', 'price_off_peak_fix': 'mean'
+    }).reset_index()
+    
+    jan_prices = monthly_price.groupby('id').first().reset_index()
+    dec_prices = monthly_price.groupby('id').last().reset_index()
+    
+    diff = pd.merge(dec_prices.rename(columns={'price_off_peak_var': 'dec_1', 'price_off_peak_fix': 'dec_2'}), 
+                    jan_prices.drop(columns='price_date'), on='id')
+    diff['offpeak_diff_dec_january_energy'] = diff['dec_1'] - diff['price_off_peak_var']
+    diff['offpeak_diff_dec_january_power'] = diff['dec_2'] - diff['price_off_peak_fix']
+    
+    df = pd.merge(client_df, diff[['id', 'offpeak_diff_dec_january_energy','offpeak_diff_dec_january_power']], on='id')
+
+    # 2. Calculate Tenure
+    df['tenure'] = ((df['date_end'] - df['date_activ']).dt.days // 365)
+
+    # 3. Transform Boolean Data
+    df['has_gas'] = df['has_gas'].replace(['t', 'f'], [1, 0])
+
+    # 4. Transform Categorical Data (Dummy Variables with frequency filtering)
+    cols = ['channel_sales', 'origin_up']
+    min_count = 100
+    value_counts = {col: df[col].value_counts() for col in cols}
+    df = pd.get_dummies(df, columns=cols, prefix=cols, dtype=int)
+    
+    for col in cols:
+        keep_cols = set(value_counts[col][value_counts[col] >= min_count].index.astype(str))
+        dummy_cols = [c for c in df.columns if c.startswith(f"{col}_")]
+        drop_cols = [c for c in dummy_cols if c.split(f"{col}_", 1)[1] not in keep_cols]
+        df.drop(columns=drop_cols, inplace=True)
+
+    # 5. Transform Skewed Numerical Data (Log10 normalization)
+    skewed_cols = [
+        'cons_12m', 'cons_gas_12m', 'cons_last_month', 'forecast_cons_12m', 
+        'forecast_cons_year', 'forecast_discount_energy', 'forecast_meter_rent_12m', 
+        'forecast_price_energy_off_peak', 'forecast_price_energy_peak', 'forecast_price_pow_off_peak'
+    ]
+    df[skewed_cols] = np.log10(df[skewed_cols] + 1)
+
+    # 6. Final Cleanup
+    df.drop(columns=['date_activ', 'date_end', 'date_modif_prod', 'date_renewal'], inplace=True)
+    df.fillna(0, inplace=True) 
+
+    print("--- Feature Engineering Complete ---")
+    return df
+
+if __name__ == "__main__":
+    # Assuming EDA script outputted clean client and price datasets
+    client_df = pd.read_csv('client_data.csv')
+    price_df = pd.read_csv('price_data.csv')
+    
+    # Needs datetime conversion before running logic
+    client_df['date_activ'] = pd.to_datetime(client_df['date_activ'])
+    client_df['date_end'] = pd.to_datetime(client_df['date_end'])
+    price_df['price_date'] = pd.to_datetime(price_df['price_date'])
+
+    engineered_df = engineer_features(client_df, price_df)
+    engineered_df.to_csv('data_for_predictions.csv', index=False)
+    print("Saved 'data_for_predictions.csv'")
