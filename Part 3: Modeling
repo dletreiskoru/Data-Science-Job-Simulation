@@ -1,0 +1,48 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
+
+def train_and_evaluate_model(data_path):
+    """Trains the Random Forest model and outputs churn probabilities."""
+    print("--- Loading Engineered Data ---")
+    df = pd.read_csv(data_path)
+
+    # Clean up unnamed index columns if they carried over
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+
+    # Define features (X) and target variable (y)
+    X = df.drop(columns=['id', 'churn'])
+    y = df['churn']
+
+    # Train/Test Split (75% training, 25% testing)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
+
+    # Initialize and Train the Model
+    print("--- Training Random Forest Classifier ---")
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+
+    # Generate Predictions and Probabilities
+    predictions = model.predict(X_test)
+    probabilities = model.predict_proba(X_test)[:, 1]
+
+    # Evaluate Model Performance
+    print("\n--- Model Evaluation ---")
+    print(classification_report(y_test, predictions))
+
+    # Compile and Save Results
+    results_df = X_test.copy()
+    results_df['churn_actual'] = y_test
+    results_df['churn_predicted'] = predictions
+    results_df['churn_probability'] = probabilities
+    
+    # Reattach the unique client IDs to the test set predictions
+    results_df = pd.merge(df[['id']], results_df, left_index=True, right_index=True)
+    
+    output_filename = 'out_of_sample_data_with_predictions.csv'
+    results_df.to_csv(output_filename, index=False)
+    print(f"\n--- Process Complete: Predictions saved to '{output_filename}' ---")
+
+if __name__ == "__main__":
+    train_and_evaluate_model('data_for_predictions.csv')
